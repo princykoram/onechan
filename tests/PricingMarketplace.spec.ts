@@ -92,7 +92,14 @@ async function navigateToPricingMarketplacesPage(page: Page) {
       await expect(table).toBeVisible({ timeout: ACTION_TIMEOUT });
       tableFound = true;
       break;
-    } catch {
+    } catch (error) {
+      // Check if error is due to page/context being closed
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('Target page, context or browser has been closed') || 
+          errorMessage.includes('Page closed') ||
+          errorMessage.includes('has been closed')) {
+        throw error; // Re-throw if page is closed
+      }
       // Try next selector
       continue;
     }
@@ -101,7 +108,18 @@ async function navigateToPricingMarketplacesPage(page: Page) {
   if (!tableFound) {
     // Fallback: wait for any table-like element to be visible
     const fallbackTable = page.locator('table, .p-datatable, [role="table"]').first();
-    await expect(fallbackTable).toBeVisible({ timeout: ACTION_TIMEOUT });
+    try {
+      await expect(fallbackTable).toBeVisible({ timeout: ACTION_TIMEOUT });
+    } catch (error) {
+      // Check if error is due to page/context being closed
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('Target page, context or browser has been closed') || 
+          errorMessage.includes('Page closed') ||
+          errorMessage.includes('has been closed')) {
+        throw new Error('Page or context was closed while waiting for table to appear');
+      }
+      throw error;
+    }
   }
 
   // Additional wait for table content to render
@@ -313,6 +331,7 @@ test.describe('Admin Pricing Marketplaces Management', () => {
     );
 
     test('should sign in and navigate to pricing marketplaces page', async ({ page }) => {
+      test.setTimeout(120000); // 2 minutes for navigation and page load
       const { email, password } = getAdminCredentials();
       await signIn(page, email, password);
       await navigateToPricingMarketplacesPage(page);

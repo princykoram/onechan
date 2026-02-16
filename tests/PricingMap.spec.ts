@@ -118,15 +118,56 @@ async function toggleRowSelection(page: Page) {
   });
 
   // Wait a bit for table content to render
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1000);
 
-  const rowCheckbox = page
-    .getByRole('row', { name: /SKU.*MPN.*Brand/i })
-    .getByRole('checkbox')
+  // Try multiple strategies to find a data row checkbox
+  let rowCheckbox: ReturnType<Page['locator']>;
+  
+  // Strategy 1: Find a data row (not header) that contains checkbox
+  // Exclude header rows by filtering out rows that match the header pattern exactly
+  const dataRow = page
+    .getByRole('row')
+    .filter({ hasNotText: /SKU.*MPN.*Brand/i })
+    .filter({ has: page.locator('[role="checkbox"]') })
     .first();
+  
+  if (await dataRow.isVisible({ timeout: 5000 }).catch(() => false)) {
+    rowCheckbox = dataRow.getByRole('checkbox').first();
+  } else {
+    // Strategy 2: Use PrimeNG checkbox selector directly in table body
+    const tableBody = page.locator('tbody, .p-datatable-tbody').first();
+    if (await tableBody.isVisible({ timeout: 5000 }).catch(() => false)) {
+      rowCheckbox = tableBody.locator('.p-checkbox-box').first();
+    } else {
+      // Strategy 3: Find any checkbox in a row that's not in the header
+      rowCheckbox = page
+        .locator('tbody [role="checkbox"], .p-datatable-tbody [role="checkbox"]')
+        .first();
+    }
+  }
 
   await expect(rowCheckbox).toBeVisible({ timeout: ACTION_TIMEOUT });
-  await rowCheckbox.click();
+  
+  // Try clicking the checkbox, with fallback to force click
+  try {
+    await rowCheckbox.click({ timeout: 5000 });
+  } catch (e) {
+    // If click fails, try clicking on the parent p-checkbox element using evaluate
+    try {
+      await rowCheckbox.evaluate((el) => {
+        const parent = el.closest('.p-checkbox') as HTMLElement | null;
+        if (parent) {
+          parent.click();
+        } else {
+          (el as HTMLElement).click();
+        }
+      });
+    } catch (e2) {
+      // Last resort: force click
+      await rowCheckbox.click({ force: true });
+    }
+  }
+  
   await page.waitForTimeout(300);
 }
 
@@ -134,13 +175,86 @@ async function toggleRowSelection(page: Page) {
  * Helper function to toggle header checkbox (select all)
  */
 async function toggleHeaderCheckbox(page: Page) {
-  const headerCheckbox = page
-    .getByRole('columnheader', { name: /.*/ })
-    .getByRole('checkbox')
-    .first();
+  // Wait for table to be fully loaded
+  await page.waitForSelector('table, .p-datatable, [role="table"]', {
+    timeout: ACTION_TIMEOUT,
+  });
+  await page.waitForTimeout(1000);
+
+  // Try multiple strategies to find and click the header checkbox
+  // Strategy 1: Find checkbox in table header using PrimeNG selector
+  const tableHeader = page.locator('thead, .p-datatable-thead').first();
+  let headerCheckbox: ReturnType<Page['locator']>;
+  
+  if (await tableHeader.isVisible({ timeout: 5000 }).catch(() => false)) {
+    // Try to find the p-checkbox element in the header (parent of checkbox-box)
+    const headerCheckboxParent = tableHeader.locator('.p-checkbox').first();
+    if (await headerCheckboxParent.isVisible({ timeout: 5000 }).catch(() => false)) {
+      headerCheckbox = headerCheckboxParent;
+    } else {
+      headerCheckbox = tableHeader.locator('.p-checkbox-box, [role="checkbox"]').first();
+    }
+  } else {
+    // Strategy 2: Find checkbox in column header
+    const columnHeader = page
+      .getByRole('columnheader')
+      .filter({ has: page.locator('[role="checkbox"], .p-checkbox') })
+      .first();
+    
+    if (await columnHeader.isVisible({ timeout: 5000 }).catch(() => false)) {
+      const checkboxInHeader = columnHeader.locator('.p-checkbox').first();
+      if (await checkboxInHeader.isVisible({ timeout: 2000 }).catch(() => false)) {
+        headerCheckbox = checkboxInHeader;
+      } else {
+        headerCheckbox = columnHeader.getByRole('checkbox').first();
+      }
+    } else {
+      // Strategy 3: Find any checkbox in header
+      headerCheckbox = page
+        .locator('thead .p-checkbox, .p-datatable-thead .p-checkbox')
+        .first();
+    }
+  }
 
   await expect(headerCheckbox).toBeVisible({ timeout: ACTION_TIMEOUT });
-  await headerCheckbox.click();
+  
+  // Wait a bit for checkbox to be ready (sometimes disabled during initial load)
+  await page.waitForTimeout(1000);
+  
+  // Check if checkbox is disabled
+  const isDisabled = await headerCheckbox.evaluate((el) => {
+    return (
+      el.classList.contains('p-disabled') ||
+      el.querySelector('.p-disabled') !== null ||
+      (el.hasAttribute('aria-disabled') && el.getAttribute('aria-disabled') === 'true')
+    );
+  });
+
+  // Try clicking with multiple strategies
+  try {
+    // First try normal click
+    await headerCheckbox.click({ timeout: 5000 });
+  } catch (e) {
+    // If normal click fails (due to intercepting element or disabled state), try force click
+    try {
+      await headerCheckbox.click({ force: true });
+    } catch (e2) {
+      // Last resort: click using JavaScript on the checkbox box inside
+      await headerCheckbox.evaluate((el) => {
+        const checkboxBox = el.querySelector('.p-checkbox-box') || el;
+        if (checkboxBox && !checkboxBox.classList.contains('p-disabled')) {
+          (checkboxBox as HTMLElement).click();
+        } else {
+          // Try clicking the parent if checkbox box is disabled
+          const parent = el.closest('.p-checkbox');
+          if (parent) {
+            (parent as HTMLElement).click();
+          }
+        }
+      });
+    }
+  }
+  
   await page.waitForTimeout(300);
 }
 

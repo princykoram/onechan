@@ -10,11 +10,23 @@ test('test', async ({ page }) => {
   await page.getByRole('button', { name: 'Catalog' }).click();
   await page.getByRole('link', { name: 'Pricing' }).click();
   await page.getByRole('tab', { name: 'Supplier' }).click();
-  await page.getByRole('tabpanel', { name: 'Supplier' }).locator('i').click();
-  await page.getByText('Select All 187416 records').click();
+  // Wait for loading icon to disappear
+  await page.getByRole('tabpanel', { name: 'Supplier' }).locator('i.p-datatable-loading-icon').waitFor({ state: 'hidden' });
+  // Click the angle-down icon specifically
+  await page.getByRole('tabpanel', { name: 'Supplier' }).locator('i.pi-angle-down').click();
+  // Wait for the dropdown menu to appear and use regex to match dynamic record count
+  const selectAllButton = page.getByText(/Select All \d+ records/);
+  await expect(selectAllButton).toBeVisible({ timeout: 30000 });
+  await selectAllButton.click();
   await page.getByRole('columnheader', { name: ' ' }).locator('i').click();
   await page.getByRole('columnheader', { name: ' ' }).locator('i').click();
-  await page.getByText('Unselect All').click();
+  // Wait for DOM to stabilize after column header clicks
+  await page.waitForTimeout(500);
+  // Re-open dropdown if it closed, then wait for Unselect All button
+  await page.getByRole('tabpanel', { name: 'Supplier' }).locator('i.pi-angle-down').click();
+  const unselectAllButton = page.getByText('Unselect All');
+  await expect(unselectAllButton).toBeVisible({ timeout: 30000 });
+  await unselectAllButton.click();
   await page.getByRole('button', { name: ' Columns' }).click();
   await page.locator('.field-checkbox > .p-checkbox > .p-checkbox-box').click();
   await page.locator('.p-checkbox-box.p-highlight').first().click();

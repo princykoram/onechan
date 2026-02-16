@@ -105,47 +105,165 @@ async function unselectAllRows(page: Page) {
   // Wait a bit to ensure any previous menu is closed
   await page.waitForTimeout(500);
   
-  // Open the row selection menu (consistent with selectCurrentPage approach)
-  await openRowSelectionMenu(page);
-  
-  // Wait for menu to appear using waitFor instead of isVisible checks
-  const menuSelectors = [
-    '.p-menu',
-    '.p-contextmenu',
-    '[role="menu"]',
-    '.p-tieredmenu',
-  ];
-  
-  // Wait for at least one menu to be visible
-  let menuContainer: Locator | null = null;
-  for (const menuSelector of menuSelectors) {
-    const menu = page.locator(menuSelector).first();
-    try {
-      await expect(menu).toBeVisible({ timeout: ACTION_TIMEOUT });
-      menuContainer = menu;
-      break;
-    } catch {
-      continue;
+  // Close any open menus first
+  try {
+    const openMenu = page.locator('.p-menu:visible, .p-contextmenu:visible, [role="menu"]:visible, .p-tieredmenu:visible').first();
+    const isMenuOpen = await openMenu.isVisible({ timeout: 1000 }).catch(() => false);
+    if (isMenuOpen) {
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
     }
+  } catch (error) {
+    // Ignore errors when closing menu
   }
   
-  if (!menuContainer) {
-    throw new Error('Menu did not open. Cannot find "Unselect All" option.');
+  // Strategy 1: Try to find "Unselect All" button directly on the page (like other tests)
+  const directUnselectAll = page.getByText(/unselect all|deselect all|clear selection/i).first();
+  const isDirectVisible = await directUnselectAll.isVisible({ timeout: 5000 }).catch(() => false);
+  
+  if (isDirectVisible) {
+    await expect(directUnselectAll).toBeEnabled({ timeout: ACTION_TIMEOUT });
+    await directUnselectAll.click();
+    await page.waitForTimeout(500);
+    return;
   }
   
-  // Wait for menu to be fully interactive
-  await page.waitForTimeout(300);
+  // Strategy 2: Try opening menu from row menu icon (original approach)
+  try {
+    await openRowSelectionMenu(page);
+    await page.waitForTimeout(500);
+    
+    // Wait for menu to appear
+    const menuSelectors = [
+      '.p-menu',
+      '.p-contextmenu',
+      '[role="menu"]',
+      '.p-tieredmenu',
+    ];
+    
+    let menuContainer: Locator | null = null;
+    for (const menuSelector of menuSelectors) {
+      const menu = page.locator(menuSelector).first();
+      const isVisible = await menu.isVisible({ timeout: 5000 }).catch(() => false);
+      if (isVisible) {
+        menuContainer = menu;
+        break;
+      }
+    }
+    
+    if (menuContainer) {
+      const unselectAllButton = menuContainer
+        .getByText(/unselect all|deselect all|clear selection/i)
+        .first();
+      
+      const isButtonVisible = await unselectAllButton.isVisible({ timeout: 5000 }).catch(() => false);
+      if (isButtonVisible) {
+        await expect(unselectAllButton).toBeEnabled({ timeout: ACTION_TIMEOUT });
+        await unselectAllButton.click();
+        await page.waitForTimeout(500);
+        return;
+      }
+    }
+  } catch (error) {
+    // Continue to next strategy
+  }
   
-  // Find the "Unselect All" button within the menu container
-  const unselectAllButton = menuContainer
-    .getByText(/unselect all|deselect all|clear selection/i)
-    .first();
+  // Strategy 3: Try finding menu icon in header row (when rows are selected, menu might be in header)
+  try {
+    const headerRow = page.getByRole('row', { name: /SKU.*MPN.*Brand/i }).first();
+    const headerMenuIcons = headerRow.locator('i');
+    const iconCount = await headerMenuIcons.count();
+    
+    for (let i = 0; i < Math.min(iconCount, 3); i++) {
+      const icon = headerMenuIcons.nth(i);
+      const isVisible = await icon.isVisible({ timeout: 2000 }).catch(() => false);
+      
+      if (isVisible) {
+        await icon.click();
+        await page.waitForTimeout(500);
+        
+        // Check if menu appeared
+        const menu = page.locator('.p-menu, .p-contextmenu, [role="menu"], .p-tieredmenu').first();
+        const menuVisible = await menu.isVisible({ timeout: 3000 }).catch(() => false);
+        
+        if (menuVisible) {
+          const unselectAllButton = menu
+            .getByText(/unselect all|deselect all|clear selection/i)
+            .first();
+          
+          const isButtonVisible = await unselectAllButton.isVisible({ timeout: 5000 }).catch(() => false);
+          if (isButtonVisible) {
+            await expect(unselectAllButton).toBeEnabled({ timeout: ACTION_TIMEOUT });
+            await unselectAllButton.click();
+            await page.waitForTimeout(500);
+            return;
+          }
+        }
+        
+        // Close menu if it didn't have the option
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+      }
+    }
+  } catch (error) {
+    // Continue to next strategy
+  }
   
-  // Wait for button to be visible and clickable
-  await expect(unselectAllButton).toBeVisible({ timeout: ACTION_TIMEOUT });
-  await expect(unselectAllButton).toBeEnabled({ timeout: ACTION_TIMEOUT });
-  await unselectAllButton.click();
-  await page.waitForTimeout(500);
+  // Strategy 4: Try finding menu icon in bulk actions area or header
+  try {
+    // Look for menu icons in the table header or action bar
+    const headerMenuIcons = page.locator('thead i, .p-datatable-header i, [class*="action"] i, .p-toolbar i');
+    const iconCount = await headerMenuIcons.count();
+    
+    for (let i = 0; i < Math.min(iconCount, 5); i++) {
+      const icon = headerMenuIcons.nth(i);
+      const isVisible = await icon.isVisible({ timeout: 2000 }).catch(() => false);
+      
+      if (isVisible) {
+        await icon.click();
+        await page.waitForTimeout(500);
+        
+        // Check if menu appeared
+        const menu = page.locator('.p-menu, .p-contextmenu, [role="menu"], .p-tieredmenu').first();
+        const menuVisible = await menu.isVisible({ timeout: 3000 }).catch(() => false);
+        
+        if (menuVisible) {
+          const unselectAllButton = menu
+            .getByText(/unselect all|deselect all|clear selection/i)
+            .first();
+          
+          const isButtonVisible = await unselectAllButton.isVisible({ timeout: 5000 }).catch(() => false);
+          if (isButtonVisible) {
+            await expect(unselectAllButton).toBeEnabled({ timeout: ACTION_TIMEOUT });
+            await unselectAllButton.click();
+            await page.waitForTimeout(500);
+            return;
+          }
+        }
+        
+        // Close menu if it didn't have the option
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+      }
+    }
+  } catch (error) {
+    // Continue to next strategy
+  }
+  
+  // Strategy 5: Try finding "Unselect All" anywhere on the page after a short wait
+  await page.waitForTimeout(1000);
+  const finalUnselectAll = page.getByText(/unselect all|deselect all|clear selection/i).first();
+  const isFinalVisible = await finalUnselectAll.isVisible({ timeout: 5000 }).catch(() => false);
+  
+  if (isFinalVisible) {
+    await expect(finalUnselectAll).toBeEnabled({ timeout: ACTION_TIMEOUT });
+    await finalUnselectAll.click();
+    await page.waitForTimeout(500);
+    return;
+  }
+  
+  // If all strategies fail, throw error
+  throw new Error('Menu did not open. Cannot find "Unselect All" option.');
 }
 
 /**

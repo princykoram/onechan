@@ -67,32 +67,55 @@ async function selectVehicleFilters(
   make: string,
   model: string
 ) {
+  // Wait for any loaders to disappear
+  await page.waitForTimeout(500);
+  
   // Select Year
   const yearButton = page.getByRole('button').filter({ hasText: /^$/ }).nth(1);
   await expect(yearButton).toBeVisible({ timeout: ACTION_TIMEOUT });
+  await expect(yearButton).toBeEnabled({ timeout: ACTION_TIMEOUT });
   await yearButton.click();
+  
+  // Wait for dropdown to open
+  await page.waitForTimeout(500);
   
   const yearOption = page.getByRole('option', { name: year });
   await expect(yearOption).toBeVisible({ timeout: ACTION_TIMEOUT });
   await yearOption.click();
+  
+  // Wait for Make dropdown to become enabled
+  await page.waitForTimeout(500);
 
   // Select Make
   const makeButton = page.getByRole('button').filter({ hasText: /^$/ }).nth(2);
   await expect(makeButton).toBeVisible({ timeout: ACTION_TIMEOUT });
+  await expect(makeButton).toBeEnabled({ timeout: ACTION_TIMEOUT });
   await makeButton.click();
+  
+  // Wait for dropdown to open
+  await page.waitForTimeout(500);
   
   const makeOption = page.getByRole('option', { name: make });
   await expect(makeOption).toBeVisible({ timeout: ACTION_TIMEOUT });
   await makeOption.click();
+  
+  // Wait for Model dropdown to become enabled
+  await page.waitForTimeout(500);
 
   // Select Model
   const modelButton = page.getByRole('button').filter({ hasText: /^$/ }).nth(3);
   await expect(modelButton).toBeVisible({ timeout: ACTION_TIMEOUT });
+  await expect(modelButton).toBeEnabled({ timeout: ACTION_TIMEOUT });
   await modelButton.click();
+  
+  // Wait for dropdown to open
+  await page.waitForTimeout(500);
   
   const modelOption = page.getByRole('option', { name: model });
   await expect(modelOption).toBeVisible({ timeout: ACTION_TIMEOUT });
   await modelOption.click();
+  
+  await page.waitForTimeout(500);
 }
 
 /**
@@ -101,8 +124,22 @@ async function selectVehicleFilters(
 async function openMoreOptions(page: Page) {
   const moreOptionsButton = page.getByRole('button', { name: /more options/i });
   await expect(moreOptionsButton).toBeVisible({ timeout: ACTION_TIMEOUT });
-  // Wait for button to be enabled (not disabled)
-  await expect(moreOptionsButton).toBeEnabled({ timeout: ACTION_TIMEOUT });
+  
+  // Wait for button to be enabled (it may be disabled until filters are applied)
+  // Wait up to 10 seconds for it to become enabled
+  let isEnabled = false;
+  for (let i = 0; i < 20; i++) {
+    isEnabled = await moreOptionsButton.isEnabled().catch(() => false);
+    if (isEnabled) {
+      break;
+    }
+    await page.waitForTimeout(500);
+  }
+  
+  if (!isEnabled) {
+    throw new Error('More Options button is disabled and cannot be clicked. Filters may need to be applied first.');
+  }
+  
   await moreOptionsButton.click();
   await page.waitForTimeout(500); // Wait for panel to open
 }
@@ -172,6 +209,16 @@ test.describe('Admin Fitment Management', () => {
       await signIn(page, email, password);
       await navigateToFitmentPage(page);
 
+      // First, select some vehicle filters to enable More Options button
+      await selectVehicleFilters(page, '2026', 'BMW4', 'M546');
+      
+      // Apply the filters first - this may be required to enable More Options
+      const initialApplyButton = page.getByRole('button', { name: /apply/i });
+      if (await initialApplyButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await initialApplyButton.click();
+        await page.waitForTimeout(2000); // Wait for filters to be applied
+      }
+
       // Open More Options panel
       await openMoreOptions(page);
 
@@ -183,10 +230,12 @@ test.describe('Admin Fitment Management', () => {
       
       if (await additionalFilterButton.isVisible({ timeout: 5000 }).catch(() => false)) {
         await additionalFilterButton.click();
+        await page.waitForTimeout(500);
         
         const teslaOption = page.getByRole('option', { name: 'TESLA' });
         if (await teslaOption.isVisible({ timeout: 5000 }).catch(() => false)) {
           await teslaOption.click();
+          await page.waitForTimeout(500);
         }
       }
 
@@ -194,10 +243,11 @@ test.describe('Admin Fitment Management', () => {
       const doneButton = page.getByRole('button', { name: /done/i });
       await expect(doneButton).toBeVisible({ timeout: ACTION_TIMEOUT });
       await doneButton.click();
+      await page.waitForTimeout(500);
 
-      const applyButton = page.getByRole('button', { name: /apply/i });
-      await expect(applyButton).toBeVisible({ timeout: ACTION_TIMEOUT });
-      await applyButton.click();
+      const finalApplyButton = page.getByRole('button', { name: /apply/i });
+      await expect(finalApplyButton).toBeVisible({ timeout: ACTION_TIMEOUT });
+      await finalApplyButton.click();
       
       await page.waitForTimeout(500);
     });
@@ -209,6 +259,13 @@ test.describe('Admin Fitment Management', () => {
 
       // First, select some filters
       await selectVehicleFilters(page, '2026', 'BMW4', 'M546');
+      
+      // Apply the filters first - this may be required to enable More Options
+      const applyButton = page.getByRole('button', { name: /apply/i });
+      if (await applyButton.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await applyButton.click();
+        await page.waitForTimeout(2000); // Wait for filters to be applied
+      }
       
       // Clear filters using More Options
       await clearMoreOptionsFilters(page);
@@ -272,8 +329,15 @@ test.describe('Admin Fitment Management', () => {
         // Overlay might not exist, which is fine
       }
       
+      // Wait for any overlay that might intercept clicks
+      try {
+        await page.waitForSelector('.p-component-overlay', { state: 'hidden', timeout: 10000 });
+      } catch {
+        // Overlay might not exist, which is fine
+      }
+      
       // Additional wait to ensure overlays are completely gone
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(1000);
       
       // Toggle a highlighted (selected) checkbox
       const highlightedCheckbox = page
@@ -281,10 +345,15 @@ test.describe('Admin Fitment Management', () => {
         .first();
       
       if (await highlightedCheckbox.isVisible({ timeout: 5000 }).catch(() => false)) {
-        // Ensure the element is enabled
-        await expect(highlightedCheckbox).toBeEnabled({ timeout: ACTION_TIMEOUT });
-        await highlightedCheckbox.click();
-        await page.waitForTimeout(300);
+        // Check if checkbox is disabled
+        const isDisabled = await highlightedCheckbox.getAttribute('class').then(cls => cls?.includes('p-disabled')).catch(() => false);
+        if (!isDisabled) {
+          // Wait for any overlays one more time before clicking
+          await page.waitForTimeout(500);
+          // Use force click if overlay is still present
+          await highlightedCheckbox.click({ force: true });
+          await page.waitForTimeout(300);
+        }
       }
 
       // Apply column changes

@@ -1,0 +1,3 @@
+SKU,Product Name,Quantity,Price
+TEST001,Test Product 1,10,29.99
+TEST002,Test Product 2,5,49.99

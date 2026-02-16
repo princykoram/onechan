@@ -22,6 +22,6 @@ test('test', async ({ page }) => {
   await page.getByRole('dialog', { name: 'Import files' }).locator('i').click();
   await page.getByRole('dialog', { name: 'Import files' }).locator('i').click();
   await page.locator('.file-upload').click();
-  await page.getByRole('button', { name: 'Choose File' }).setInputFiles('Catalog.txt');
+  await page.getByRole('button', { name: 'Choose File' }).setInputFiles('tests/fixtures/Catalog.txt');
   await page.getByRole('button', { name: 'Apply' }).click();
 });

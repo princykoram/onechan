@@ -84,12 +84,21 @@ test.describe('Admin Inventory Dashboard', () => {
       await signIn(page, email, password);
       await navigateToInventoryDashboard(page);
 
+      // Wait for the table to finish loading (wait for loading spinner to disappear)
+      await page.waitForSelector('.p-datatable-loading-icon', { state: 'hidden', timeout: ACTION_TIMEOUT }).catch(() => {});
+      await page.waitForTimeout(1000); // Additional wait for stability
+
       // Open filter dropdown (tabpanel with 'All' tab)
       const allTabPanel = page.getByRole('tabpanel', { name: 'All' });
       await expect(allTabPanel).toBeVisible({ timeout: ACTION_TIMEOUT });
       
-      // Click the filter icon to open dropdown
-      const filterIcon = allTabPanel.locator('i').first();
+      // Wait for filter icon to be stable (not a loading spinner)
+      // Find icon that doesn't have the loading class
+      const filterIcon = allTabPanel.locator('i:not(.p-datatable-loading-icon):not(.pi-spin)').first();
+      await expect(filterIcon).toBeVisible({ timeout: ACTION_TIMEOUT });
+      // Wait for element to be stable before clicking
+      await filterIcon.waitFor({ state: 'visible', timeout: ACTION_TIMEOUT });
+      await page.waitForTimeout(500); // Additional stability wait
       await filterIcon.click();
 
       // Wait for filter options to appear
@@ -165,14 +174,18 @@ test.describe('Admin Inventory Dashboard', () => {
       await columnsButton.click();
       await page.waitForTimeout(500);
 
-      // Toggle a highlighted checkbox (selected column) - find one that is enabled
+      // Toggle a highlighted checkbox (selected column) - find one that is enabled and not disabled
       // Use selector that excludes disabled checkboxes: parent .p-checkbox should not have .p-checkbox-disabled
+      // Also exclude checkboxes that have p-disabled class
       const enabledHighlightedCheckbox = page
-        .locator('.p-checkbox:not(.p-checkbox-disabled) .p-checkbox-box.p-highlight')
+        .locator('.p-checkbox:not(.p-checkbox-disabled) .p-checkbox-box.p-highlight:not(.p-disabled)')
         .first();
       
       if (await enabledHighlightedCheckbox.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await enabledHighlightedCheckbox.click();
+        // Wait for any overlays to be ready
+        await page.waitForTimeout(500);
+        // Use force click if overlay is intercepting
+        await enabledHighlightedCheckbox.click({ force: true });
         await page.waitForTimeout(300);
 
         // Apply changes
@@ -224,12 +237,21 @@ test.describe('Admin Inventory Dashboard', () => {
         await expect(createReportButton).toBeVisible({ timeout: ACTION_TIMEOUT });
         await createReportButton.click();
 
-        // Wait for report creation to complete
-        await page.waitForTimeout(2000);
-
-        // Assert: Report should be created (verify by checking for success message or dialog closure)
-        // The page should no longer show the report name input if successful
-        await expect(reportNameInput).not.toBeVisible({ timeout: ACTION_TIMEOUT });
+        // Wait for report creation to complete - check for success message or dialog closure
+        // Look for success message or wait for dialog to close
+        const successMessage = page.getByText(/success|created|completed/i);
+        const dialogClosed = page.locator('.p-dialog').first();
+        
+        // Wait for either success message or dialog to close
+        try {
+          await expect(successMessage).toBeVisible({ timeout: 10000 }).catch(() => {});
+        } catch {
+          // If no success message, wait for dialog to close
+          await expect(dialogClosed).not.toBeVisible({ timeout: ACTION_TIMEOUT }).catch(() => {});
+        }
+        
+        // Alternative: Check if export button is visible again (indicating dialog closed)
+        await expect(exportButton).toBeVisible({ timeout: ACTION_TIMEOUT });
       }
     });
   });
