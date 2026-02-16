@@ -1,0 +1,30 @@
+{
+  "name": "ecommerce-playwright",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:chrome": "playwright test --project=chrome",
+    "test:guest": "playwright test tests/vehicle-selection-guest.spec.ts",
+    "test:search:chrome": "playwright test tests/search/product-search.spec.ts --project=chrome",
+    "test:orders": "playwright test tests/orders.spec.ts --project=chrome",
+    "test:orders:chrome": "playwright test tests/orders.spec.ts --project=chrome"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.58.0",
+    "@types/node": "^25.0.10"
+  },
+  "directories": {
+    "test": "tests"
+  },
+  "dependencies": {
+    "playwright": "^1.58.0",
+    "playwright-core": "^1.58.0",
+    "undici-types": "^7.16.0"
+  }
+}
